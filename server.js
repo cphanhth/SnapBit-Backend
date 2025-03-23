@@ -8,8 +8,8 @@ const cors = require('cors');
 const authRoutes = require('./routes/auth');
 const habitRoutes = require('./routes/habits');
 const postRoutes = require('./routes/posts');
-const postRoutes = require('./routes/friends');
-const postRoutes = require('./routes/communities');
+const friendsRoutes = require('./routes/friends');
+const communitiesRoutes = require('./routes/communities');
 
 const app = express();
 app.use(express.json());
