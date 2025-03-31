@@ -10,18 +10,23 @@ const habitRoutes = require('./routes/habits');
 const postRoutes = require('./routes/posts');
 const friendsRoutes = require('./routes/friends');
 const communitiesRoutes = require('./routes/communities');
+const userRoutes = require('./routes/users');
 
 const app = express();
-app.use(express.json());
-app.use(cors());
 
-// API routes
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/habits', habitRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/friends', friendsRoutes);
 app.use('/api/communities', communitiesRoutes);
+app.use('/api/users', userRoutes);
 
+// MongoDB connection
 mongoose
   .connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
@@ -31,4 +36,6 @@ mongoose
   .catch((err) => console.error(err));
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});

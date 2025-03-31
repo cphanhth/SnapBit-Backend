@@ -4,9 +4,24 @@ const router = express.Router();
 const Community = require('../models/Community');
 const User = require('../models/User');
 const Habit = require('../models/Habit');
+const jwt = require('jsonwebtoken');
+
+// Auth middleware
+const authenticate = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+};
 
 // Create a new community
-router.post('/', async (req, res) => {
+router.post('/', authenticate, async (req, res) => {
   try {
     const { name, description, creator, habitName } = req.body;
     const newCommunity = new Community({
@@ -24,7 +39,7 @@ router.post('/', async (req, res) => {
 });
 
 // Get communities (optional search by name)
-router.get('/', async (req, res) => {
+router.get('/', authenticate, async (req, res) => {
   try {
     const search = req.query.search || '';
     const communities = await Community.find({ name: { $regex: search, $options: 'i' } });
@@ -35,9 +50,9 @@ router.get('/', async (req, res) => {
 });
 
 // Join a community
-router.post('/:communityId/join', async (req, res) => {
+router.post('/:communityId/join', authenticate, async (req, res) => {
   try {
-    const { userId } = req.body;
+    const userId = req.user._id;
     const community = await Community.findById(req.params.communityId);
     if (!community) return res.status(404).json({ error: 'Community not found' });
     // Check if user is already a member
@@ -65,9 +80,9 @@ router.post('/:communityId/join', async (req, res) => {
 });
 
 // Leave a community
-router.post('/:communityId/leave', async (req, res) => {
+router.post('/:communityId/leave', authenticate, async (req, res) => {
   try {
-    const { userId } = req.body;
+    const userId = req.user._id;
     const community = await Community.findById(req.params.communityId);
     if (!community) return res.status(404).json({ error: 'Community not found' });
     community.members = community.members.filter(memberId => memberId.toString() !== userId);
@@ -79,17 +94,22 @@ router.post('/:communityId/leave', async (req, res) => {
 });
 
 // Delete a community (only the creator can delete)
-router.delete('/:communityId', async (req, res) => {
+router.delete('/:communityId', authenticate, async (req, res) => {
   try {
-    const { userId } = req.body; // The creator's user ID
     const community = await Community.findById(req.params.communityId);
-    if (!community) return res.status(404).json({ error: 'Community not found' });
-    if (community.creator.toString() !== userId) {
-      return res.status(403).json({ error: 'Only the creator can delete the community' });
+    if (!community) {
+      return res.status(404).json({ error: 'Community not found' });
     }
-    await community.remove();
+
+    // Verify ownership
+    if (community.creator.toString() !== req.user.id) {
+      return res.status(403).json({ error: 'Not authorized to delete this community' });
+    }
+
+    await community.deleteOne();
     res.json({ message: 'Community deleted successfully' });
   } catch (err) {
+    console.error('Error deleting community:', err);
     res.status(500).json({ error: err.message });
   }
 });
