@@ -42,9 +42,27 @@ router.post('/', authenticate, async (req, res) => {
 router.get('/', authenticate, async (req, res) => {
   try {
     const search = req.query.search || '';
-    const communities = await Community.find({ name: { $regex: search, $options: 'i' } });
-    res.json(communities);
+    const communities = await Community.find({ name: { $regex: search, $options: 'i' } })
+      .populate('members', '_id username')
+      .populate('creator', '_id username');
+    
+    // Clean up the communities data by filtering out null members
+    const cleanedCommunities = communities.map(community => {
+      const cleanCommunity = community.toObject();
+      cleanCommunity.members = cleanCommunity.members.filter(member => member !== null);
+      return cleanCommunity;
+    });
+    
+    console.log('Fetched communities:', cleanedCommunities.map(c => ({
+      id: c._id,
+      name: c.name,
+      members: c.members.map(m => m._id.toString()),
+      creator: c.creator?._id.toString()
+    })));
+    
+    res.json(cleanedCommunities);
   } catch (err) {
+    console.error('Error fetching communities:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -52,29 +70,66 @@ router.get('/', authenticate, async (req, res) => {
 // Join a community
 router.post('/:communityId/join', authenticate, async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.id;
+    
+    // First verify the user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Then find the community
     const community = await Community.findById(req.params.communityId);
-    if (!community) return res.status(404).json({ error: 'Community not found' });
+    if (!community) {
+      return res.status(404).json({ error: 'Community not found' });
+    }
+    
+    // Clean up members array by filtering out null values
+    community.members = community.members.filter(member => member !== null);
+    
     // Check if user is already a member
-    if (community.members.includes(userId)) {
+    const isMember = community.members.some(memberId => memberId.toString() === userId.toString());
+    if (isMember) {
       return res.status(400).json({ error: 'User already a member' });
     }
+
+    // Add user to community members
     community.members.push(userId);
     await community.save();
 
-    // Auto-add the community habit to the user's habits if it doesn't exist
-    const user = await User.findById(userId);
+    // Add habit if it doesn't exist
     const existingHabit = await Habit.findOne({ owner: userId, name: community.habitName });
     if (!existingHabit) {
       const colors = ['#e74c3c', '#8e44ad', '#3498db', '#27ae60', '#f1c40f'];
       const randomColor = colors[Math.floor(Math.random() * colors.length)];
-      const newHabit = new Habit({ name: community.habitName, time: 'TBD', color: randomColor, owner: userId });
+      const newHabit = new Habit({ 
+        name: community.habitName, 
+        time: 'TBD', 
+        color: randomColor, 
+        owner: userId 
+      });
       await newHabit.save();
+      
+      // Initialize user.habits if it doesn't exist
+      if (!user.habits) {
+        user.habits = [];
+      }
       user.habits.push(newHabit._id);
       await user.save();
     }
-    res.json({ message: 'Joined community successfully', community });
+
+    // Return the updated community
+    const updatedCommunity = await Community.findById(community._id)
+      .populate('members', '_id username')
+      .populate('creator', '_id username');
+    
+    // Clean up the response
+    const cleanCommunity = updatedCommunity.toObject();
+    cleanCommunity.members = cleanCommunity.members.filter(member => member !== null);
+    
+    res.json({ message: 'Joined community successfully', community: cleanCommunity });
   } catch (err) {
+    console.error('Error joining community:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -82,13 +137,26 @@ router.post('/:communityId/join', authenticate, async (req, res) => {
 // Leave a community
 router.post('/:communityId/leave', authenticate, async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.id;
     const community = await Community.findById(req.params.communityId);
     if (!community) return res.status(404).json({ error: 'Community not found' });
-    community.members = community.members.filter(memberId => memberId.toString() !== userId);
+    
+    // Clean up members array and remove the user
+    community.members = community.members.filter(memberId => memberId?.toString() !== userId.toString());
     await community.save();
-    res.json({ message: 'Left community successfully', community });
+
+    // Return the updated community with populated data
+    const updatedCommunity = await Community.findById(community._id)
+      .populate('members', '_id username')
+      .populate('creator', '_id username');
+    
+    // Clean up the response
+    const cleanCommunity = updatedCommunity.toObject();
+    cleanCommunity.members = cleanCommunity.members.filter(member => member !== null);
+    
+    res.json({ message: 'Left community successfully', community: cleanCommunity });
   } catch (err) {
+    console.error('Error leaving community:', err);
     res.status(500).json({ error: err.message });
   }
 });

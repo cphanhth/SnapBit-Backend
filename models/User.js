@@ -18,6 +18,14 @@ const UserSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
   }],
+  incomingFriendRequests: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  }],
+  outgoingFriendRequests: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  }],
   habits: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Habit',
